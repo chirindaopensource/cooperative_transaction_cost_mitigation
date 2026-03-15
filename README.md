@@ -92,6 +92,12 @@ The diagonal scaling matrix $D$ is heuristically set to the Hessian of the cost 
 To test the protocol, synthetic alphas are generated using a stationary Vector Autoregressive process, calibrated via the discrete-time Lyapunov equation:
 $$ E_t = \Phi E_{t-1} + U_t \quad \text{where} \quad \Sigma_E = \Phi \Sigma_E \Phi^T + \Sigma_U $$
 
+Below is a diagram which summarizes the proposed approach:
+
+<div align="center">
+  <img src="https://github.com/chirindaopensource/cooperative_transaction_cost_mitigation/blob/main/cooperative_transaction_cost_mitigation_ipo_main.png" alt="Distributed Cooperative Optimization Architecture" width="100%">
+</div>
+
 ## Features
 
 The provided iPython Notebook (`cooperative_transaction_cost_mitigation_draft.ipynb`) implements the full research pipeline, including:
