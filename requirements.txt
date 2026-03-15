@@ -1,0 +1,302 @@
+﻿# ==============================================================================
+#
+#  REQUIREMENTS.TXT - PRODUCTION-GRADE DEPENDENCY SPECIFICATION
+#  A Distributed Method for Cooperative Transaction Cost Mitigation
+#
+#  This requirements file provides deterministic, reproducible dependencies for
+#  a production-grade implementation of the ADMM-based distributed optimization
+#  framework for institutional transaction cost minimization.
+#
+#  Deployment Context:
+#  - 434-asset universe across 25 years (2000-2025) of daily market data
+#  - M autonomous portfolio managers with decentralized optimization
+#  - Walk-forward simulation with daily rebalancing and state accounting
+#  - Non-linear 3/2-power transaction cost modeling with market impact
+#  - Proximal operator calculus for constrained convex optimization
+#
+#  Python Version Requirement: >=3.9,<3.13
+#  Tested on: CPython 3.9.18, 3.10.13, 3.11.7, 3.12.1
+#
+#  Installation:
+#    pip install -r requirements.txt
+#
+#  Verification:
+#    python -c "import cvxpy as cp; print(cp.installed_solvers())"
+#    python -c "import numpy as np; np.show_config()"
+#
+#  Author: CS Chirinda
+#  Version: 1.0.0
+#  Last Updated: Sunday, March 15, 2026
+#
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# SECTION 1: CORE NUMERICAL COMPUTING STACK
+# ------------------------------------------------------------------------------
+# These packages provide the foundation for all numerical linear algebra,
+# tensor operations, and time-series data manipulation required by the ADMM
+# framework and the walk-forward backtest simulation.
+
+# NumPy: High-performance multidimensional array operations and vectorized
+# numerical computing. CRITICAL OPERATIONS:
+#   - Eigenvalue decomposition for low-rank factor model (J=15 factors)
+#   - Diagonal scaling matrix D construction from Hessian approximations
+#   - Vectorized NAV-weighted aggregation of PM trade vectors: z = Σλ_i·x_i
+#   - Broadcasting operations for cross-sectional return calculations
+# VERSION RATIONALE: 1.26.4 provides deterministic floating-point behavior
+# required for reproducible ADMM convergence analysis. ABI-stable with SciPy 1.12.x.
+# CRITICAL: NumPy 2.x introduces C-API breaking changes incompatible with
+# current solver bindings. DO NOT UPGRADE without verifying CVXPY compatibility.
+numpy==1.26.4
+
+# SciPy: Advanced scientific computing and linear algebra. CRITICAL OPERATIONS:
+#   - scipy.linalg.solve_discrete_lyapunov: Solves Σ_E = Φ·Σ_E·Φ^T + Σ_U for
+#     stationary covariance calibration in VAR(1) alpha noise generation
+#   - scipy.linalg.eig: Eigendecomposition for factor loading extraction
+#   - scipy.linalg.cholesky: Cholesky factorization for multivariate normal sampling
+#   - BLAS/LAPACK bindings: Optimized matrix multiplication for daily covariance updates
+# VERSION RATIONALE: 1.12.0 ensures compatibility with NumPy 1.26.x and provides
+# stable Lyapunov solvers without numerical precision loss in high-dimensional settings.
+scipy==1.12.0
+
+# pandas: Time-series data structures and panel data manipulation. CRITICAL OPERATIONS:
+#   - MultiIndex DataFrames: Organize (time × asset) panels for 434 assets × 6,300 days
+#   - Forward-filling: Handle missing bid/ask data in market microstructure
+#   - GroupBy operations: Cross-sectional daily rebalancing and IC calculations
+#   - Rolling window statistics: 42-day forward volatility and covariance estimation
+#   - State accounting: Track portfolio weights w_curr, cash balances c, and NAV λ_i
+# VERSION RATIONALE: 2.2.1 provides 20-30% performance improvements in groupby operations
+# (critical for daily cross-sectional analytics) and memory-efficient copy-on-write semantics.
+pandas==2.2.1
+
+# ------------------------------------------------------------------------------
+# SECTION 2: DISCIPLINED CONVEX PROGRAMMING AND OPTIMIZATION
+# ------------------------------------------------------------------------------
+# CVXPY provides the domain-specific language (DSL) for formulating and solving
+# the PM-level and Planner-level convex optimization subproblems in the ADMM
+# decomposition. It abstracts solver backends and ensures DCP compliance.
+
+# CVXPY: Disciplined Convex Programming framework. CRITICAL CAPABILITIES:
+#   - DCP verification: Ensures objective and constraints satisfy convexity rules
+#   - Proximal operator representation: Indicator functions I_X and I_Z for constraints
+#   - Problem canonicalization: Transforms high-level specification into solver-compatible form
+#   - Warm-starting: Reuses dual variables across ADMM iterations for faster convergence
+#   - Diagonal scaling: Supports D-matrix preconditioning for better conditioning
+# SUBPROBLEMS IMPLEMENTED:
+#   - PM-level: min_x (1/2)·x^T·Σ·x - α^T·x + (ρ/2)·||x - z + u/ρ||^2 + I_X(x)
+#   - Planner-level: min_z κ(z) + (ρM/2)·||z - x_avg - u_avg/ρ||^2 + I_Z(z)
+# VERSION RATIONALE: 1.5.1 provides robust DPP (disciplined parametrized programming)
+# support for time-varying parameters (α_t, Σ_t, κ_t) across 6,300 daily rebalances.
+cvxpy==1.5.1
+
+# ------------------------------------------------------------------------------
+# SECTION 3: CONVEX OPTIMIZATION SOLVER BACKENDS
+# ------------------------------------------------------------------------------
+# CVXPY requires at least one installed solver. For institutional-grade performance
+# with thousands of constraints and decision variables, we specify a diversified
+# solver ecosystem with complementary strengths.
+
+# ECOS: Embedded Conic Solver for second-order cone programs (SOCP).
+# USAGE: Small-to-medium PM-level subproblems with O(100-500) decision variables
+# and O(500-2000) constraints (leverage, concentration, turnover limits).
+# STRENGTHS: Fast warm-starting, low memory overhead, stable for well-conditioned problems.
+# VERSION RATIONALE: 2.0.13 provides deterministic behavior for reproducible benchmarks.
+ecos==2.0.13
+
+# SCS: Splitting Conic Solver via Douglas-Rachford operator splitting.
+# USAGE: Large-scale Planner-level problems aggregating M PM trade vectors.
+# STRENGTHS: Handles ill-conditioned problems, robust dual infeasibility detection,
+# optional GPU acceleration via scs[gpu] extra (requires CUDA toolkit).
+# VERSION RATIONALE: 3.2.4.post1 includes adaptive step-size scaling and improved
+# termination criteria for non-stationary market environments.
+scs==3.2.4.post1
+
+# OSQP: Operator Splitting Quadratic Program solver.
+# USAGE: Quadratic subproblems arising from 3/2-power cost approximation.
+# STRENGTHS: Highly efficient warm-starting, adaptive rho tuning (complements manual ρ=10.0),
+# polishing for high-accuracy solutions required for transaction cost accounting.
+# VERSION RATIONALE: 0.6.7 provides numerically stable polishing for 1e-8 tolerance.
+osqp==0.6.7
+
+# CLARABEL: Modern conic interior-point solver with hybrid step direction search.
+# USAGE: Fallback for challenging instances with near-degenerate constraints.
+# STRENGTHS: Excellent numerical stability, infeasibility certificates for debugging,
+# presolve analysis for automatic problem reduction, handles both primal and dual infeasibility.
+# VERSION RATIONALE: 0.7.1 is the latest stable release with proven reliability in production.
+clarabel==0.7.1
+
+# ------------------------------------------------------------------------------
+# SECTION 4: PERFORMANCE AND REPRODUCIBILITY UTILITIES
+# ------------------------------------------------------------------------------
+
+# threadpoolctl: Runtime control of BLAS/LAPACK and OpenMP threading.
+# CRITICAL FOR: Preventing over-subscription when simulating M parallel PM instances
+# in a single-machine environment. Ensures reproducible timing benchmarks across
+# heterogeneous compute clusters (e.g., AWS c5.xlarge vs. local workstation).
+# USAGE: Set thread limits to 1 for deterministic numerical results:
+#   with threadpoolctl.threadpool_limits(limits=1, user_api='blas'):
+#       # Run ADMM iteration
+# VERSION RATIONALE: 3.4.0 supports detection of MKL, OpenBLAS, BLIS, and Accelerate.
+threadpoolctl==3.4.0
+
+# ------------------------------------------------------------------------------
+# SECTION 5: OPTIONAL DEVELOPMENT AND TESTING DEPENDENCIES
+# ------------------------------------------------------------------------------
+# Uncomment these packages for development workflows. They are NOT required for
+# production deployment but are essential for institutional-grade software engineering.
+
+# Testing and Quality Assurance:
+# pytest>=8.1.1              # Unit testing framework for ADMM convergence properties
+# pytest-cov>=5.0.0          # Code coverage analysis (target: >90% for optimization kernel)
+# pytest-xdist>=3.5.0        # Parallel test execution across multiple CPUs
+# hypothesis>=6.98.0         # Property-based testing for proximal operator identities
+
+# Code Quality and Style:
+# black>=24.3.0              # PEP-8 compliant code formatting (line length: 88)
+# mypy>=1.9.0                # Static type checking for dataclass definitions
+# flake8>=7.0.0              # Linting for style violations (excludes E203, W503)
+# isort>=5.13.2              # Import sorting per PEP-8 (profile: black)
+# pylint>=3.1.0              # Advanced static analysis for code quality metrics
+
+# Documentation:
+# sphinx>=7.2.6              # Technical documentation generation (NumPy docstring style)
+# sphinx-rtd-theme>=2.0.0    # Read the Docs theme for institutional documentation
+# sphinx-autodoc-typehints>=2.0.0  # Automatic type hint documentation
+
+# Interactive Development:
+# jupyter>=1.0.0             # Interactive notebook environment for prototyping
+# ipython>=8.22.0            # Enhanced REPL with introspection and magic commands
+
+# Visualization and Diagnostics:
+# matplotlib>=3.8.3          # Backtest performance visualization (Sharpe ratio evolution)
+# seaborn>=0.13.2            # Statistical graphics for ADMM residual diagnostics
+# plotly>=5.20.0             # Interactive dual residual convergence plots
+
+# Performance Profiling:
+# line-profiler>=4.1.2       # Line-by-line profiling for ADMM hot paths
+# memory-profiler>=0.61.0    # Memory usage analysis for 434-asset × 6,300-day panels
+# py-spy>=0.3.14             # Sampling profiler for production-like workloads
+
+# ------------------------------------------------------------------------------
+# SECTION 6: VERSION COMPATIBILITY MATRIX
+# ------------------------------------------------------------------------------
+#
+# The following dependency graph ensures mutual ABI/API compatibility:
+#
+#   ┌─────────────────────────────────────────────────────────────┐
+#   │ Python Interpreter:  3.9.x | 3.10.x | 3.11.x | 3.12.x       │
+#   └─────────────────────────────────────────────────────────────┘
+#                              ▼
+#   ┌─────────────────────────────────────────────────────────────┐
+#   │ NumPy 1.26.4         [requires Python >=3.9]                │
+#   │   - C-API version: 1.26                                     │
+#   │   - ABI stable with: SciPy 1.12.x, pandas 2.2.x             │
+#   └─────────────────────────────────────────────────────────────┘
+#                              ▼
+#   ┌─────────────────────────────────────────────────────────────┐
+#   │ SciPy 1.12.0         [requires NumPy >=1.22.4, <2.0]        │
+#   │   - BLAS/LAPACK:     Linked via NumPy configuration         │
+#   │   - Lyapunov solver: scipy.linalg.solve_discrete_lyapunov   │
+#   └─────────────────────────────────────────────────────────────┘
+#                              ▼
+#   ┌─────────────────────────────────────────────────────────────┐
+#   │ pandas 2.2.1         [requires NumPy >=1.23.2]              │
+#   │   - Copy-on-Write:   Enabled by default in 2.2.x            │
+#   │   - Memory savings:  ~30% for large MultiIndex DataFrames   │
+#   └─────────────────────────────────────────────────────────────┘
+#                              ▼
+#   ┌─────────────────────────────────────────────────────────────┐
+#   │ CVXPY 1.5.1          [requires NumPy >=1.21.0, SciPy >=1.6] │
+#   │   - DCP engine:      Parses and canonicalizes problems      │
+#   │   - Solver backends: ECOS, SCS, OSQP, CLARABEL              │
+#   └─────────────────────────────────────────────────────────────┘
+#
+# BREAKING CHANGE ALERT:
+#   NumPy 2.0.x introduces C-API changes that break binary compatibility with
+#   compiled solver extensions (ECOS, SCS, OSQP). As of 2026-03-15, CVXPY 1.5.x
+#   does NOT officially support NumPy 2.0. Monitor CVXPY GitHub for updates:
+#   https://github.com/cvxpy/cvxpy/issues
+#
+# ------------------------------------------------------------------------------
+# SECTION 7: PLATFORM-SPECIFIC INSTALLATION NOTES
+# ------------------------------------------------------------------------------
+#
+# macOS (Apple Silicon M1/M2/M3/M4):
+#   - Install NumPy/SciPy via conda-forge for Accelerate framework BLAS:
+#       conda install -c conda-forge numpy scipy
+#   - Alternative: Build from source with openblas:
+#       brew install openblas
+#       pip install numpy scipy --no-binary :all:
+#   - VERIFY: python -c "import numpy; numpy.show_config()"
+#     Should show "blas_opt_info: ... library_dirs = ['/opt/homebrew/...']"
+#
+# Linux (Ubuntu 22.04/24.04, RHEL 8/9):
+#   - Install system BLAS libraries:
+#       sudo apt-get install libopenblas-dev liblapack-dev  # Ubuntu/Debian
+#       sudo dnf install openblas-devel lapack-devel        # RHEL/Fedora
+#   - Recommended: Intel MKL for production deployments:
+#       pip install mkl mkl-service
+#       export MKL_NUM_THREADS=1
+#
+# Windows 10/11:
+#   - OSQP requires Microsoft Visual C++ 14.0 or greater (MSVC 2015+)
+#   - Install via: https://visualstudio.microsoft.com/downloads/
+#   - Alternative: Install via conda-forge (includes pre-built binaries):
+#       conda install -c conda-forge numpy scipy cvxpy
+#
+# ------------------------------------------------------------------------------
+# SECTION 8: SOLVER SELECTION STRATEGY
+# ------------------------------------------------------------------------------
+#
+# CVXPY automatically selects solvers based on problem structure. Override with:
+#   prob.solve(solver=cp.CLARABEL, verbose=True)
+#
+# RECOMMENDED HIERARCHY:
+#   1. CLARABEL:  Best overall stability, infeasibility diagnostics
+#   2. ECOS:      Fast for well-conditioned SOCP (PM-level subproblems)
+#   3. SCS:       Large-scale problems, robust to ill-conditioning
+#   4. OSQP:      Quadratic programs with warm-starting requirements
+#
+# COMMERCIAL SOLVERS (optional, requires separate licensing):
+#   - MOSEK:  Install via `pip install mosek` + license file
+#   - GUROBI: Install via `pip install gurobipy` + license activation
+#   Both provide superior performance for large-scale institutional problems
+#   but are NOT required for reproducibility of the paper's results.
+#
+# ------------------------------------------------------------------------------
+# SECTION 9: REPRODUCIBILITY CHECKLIST
+# ------------------------------------------------------------------------------
+#
+# To ensure bit-level deterministic results across compute environments:
+#
+# ☑ Set random seeds:
+#     np.random.seed(42)
+#     import random; random.seed(42)
+#
+# ☑ Control BLAS threading:
+#     export OMP_NUM_THREADS=1
+#     export MKL_NUM_THREADS=1
+#     export OPENBLAS_NUM_THREADS=1
+#     export BLIS_NUM_THREADS=1
+#
+# ☑ Disable Python hash randomization:
+#     export PYTHONHASHSEED=0
+#
+# ☑ Use identical Python version:
+#     python --version  # Should match development environment
+#
+# ☑ Verify NumPy BLAS linkage:
+#     python -c "import numpy; numpy.show_config()"
+#     # Ensure identical BLAS library (MKL vs. OpenBLAS vs. Accelerate)
+#
+# ☑ Lock solver backends:
+#     python -c "import cvxpy as cp; print(sorted(cp.installed_solvers()))"
+#     # Should show: ['CLARABEL', 'ECOS', 'OSQP', 'SCS']
+#
+# ☑ Validate package versions:
+#     pip freeze | grep -E 'numpy|scipy|pandas|cvxpy'
+#     # Should exactly match this requirements.txt
+#
+# ==============================================================================
+# END OF REQUIREMENTS SPECIFICATION
+# =============================================================================
