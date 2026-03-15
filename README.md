@@ -1,32 +1,3 @@
-<reasoning>
-To construct an elite, implementation-grade `README.md` for the "Distributed Method for Cooperative Transaction Cost Mitigation" repository, I must synthesize the mathematical rigor of the LaTeX context with the software engineering best practices of a top-tier open-source project. 
-
-The objective is to create a comprehensive guide that not only explains *how* to use the codebase but *why* it exists, detailing the theoretical underpinnings of ADMM, the 3/2-power transaction cost model, and the specific econometric simulations (VAR(1) alpha, low-rank risk models) required to replicate the findings of Devanathan, Bell, Rueter, and Boyd (2026).
-
-**Step-by-Step Construction Plan:**
-
-1.  **Project Shields (Badges):** I will generate at least 19 badges covering licensing (MIT), Python version (3.9+), arXiv link, Journal (ArXiv Preprint), Year (2026), Discipline (Quantitative Finance | Distributed Optimization), Data Sources (LSEG/Refinitiv, FRED), Core Methods (ADMM | Convex Optimization), Analysis (3/2-Power TC | VAR(1) Alpha), Validation (Primal/Dual Residuals), Robustness (Walk-Forward Simulation), and code quality tools (Black, Mypy, NumPy, Pandas, SciPy, CVXPY, YAML, Jupyter, Open Source).
-2.  **Introduction:** I will explicitly state that this is an independent implementation of the paper by Nikhil Devanathan, Logan Bell, Dylan Rueter, and Stephen Boyd. I will summarize the core problem: the tragedy of the commons in multi-manager execution and the privacy-preserving ADMM solution.
-3.  **Table of Contents:** I will include all requested themes to ensure easy navigation.
-4.  **Theoretical Background:** I will distill the LaTeX context into its core mathematical components:
-    *   The Joint Firm Problem (Equation 3).
-    *   The 3/2-Power Transaction Cost Model (Equation 1).
-    *   The ADMM Protocol (Algorithm 1), specifically highlighting the sharing signal $\ell^k$ and the proximal PM update.
-    *   The Econometric Simulation (VAR(1) noise and Low-Rank Covariance).
-5.  **Architecture Diagram:** I will embed the requested `cooperative_transaction_cost_mitigation_ipo_main.png` image link.
-6.  **Features & Methodology:** I will detail the pipeline's capabilities, emphasizing the strict separation of endogenous state and exogenous data, the use of CVXPY for Disciplined Convex Programming, and the rigorous walk-forward accounting layer.
-7.  **Core Components & Key Callable:** I will highlight `run_distributed_cooperative_optimization_pipeline` as the master orchestrator that chains Tasks 1 through 35.
-8.  **Prerequisites & Installation:** Standard Python setup instructions.
-9.  **Input Data Structure:** I will define the exact schemas required for `raw_market_df`, `risk_free_rate_series`, `master_trading_calendar`, and `asset_identifier_map`.
-10. **Usage Example:** I will provide a highly professional, executable Python snippet demonstrating how to load the `config.yaml`, generate synthetic data (to bypass proprietary data restrictions), and invoke the pipeline.
-11. **Output Structure:** I will explain the `reproduction_package`, including the performance tables, ADMM traces, and the immutable `.tar.gz` archive.
-12. **Project Structure:** I will map out the repository, explicitly including `config.yaml` and the main Jupyter notebook.
-13. **Customization, Contributing, Extensions:** I will provide actionable advice for extending the framework (e.g., alternative cost models, real-time execution).
-14. **License, Citation, Acknowledgments:** I will provide the correct BibTeX citation for the 2026 paper and acknowledge the original authors and the CVXPY ecosystem.
-
-The resulting document will be formatted in strict Markdown, adhering to the highest standards of software documentation.
-</reasoning>
-
 # **`README.md`**
 
 # A Distributed Method for Cooperative Transaction Cost Mitigation
