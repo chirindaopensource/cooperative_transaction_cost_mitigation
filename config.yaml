@@ -1,0 +1,326 @@
+﻿# ==============================================================================
+# STUDY CONFIGURATION: DISTRIBUTED COOPERATIVE TRANSACTION COST MITIGATION
+# ==============================================================================
+
+# -------------------------------------------------------------------------------------------------------------------------------
+# REQUIRED EXTERNAL INPUT OBJECTS
+# -------------------------------------------------------------------------------------------------------------------------------
+REQUIRED_EXTERNAL_INPUT_OBJECTS:
+  raw_market_df:
+    type: "pd.DataFrame"
+    index: 
+      - "date"
+      - "asset_id"
+    required_columns:
+      - "ticker"
+      - "adjusted_trade_price"
+      - "adjusted_bid_price"
+      - "adjusted_ask_price"
+      - "share_volume"
+      - "market_cap_usd"
+      - "is_historical_sp500_constituent"
+      - "is_primary_observation"
+      - "currency"
+      - "data_quality_flag"
+    description: "Primary raw market panel used to build the asset universe, returns, spreads, and dollar volume."
+  risk_free_rate_series:
+    type: "pd.Series"
+    index: "date"
+    name: "risk_free_rate"
+    description: "3-month U.S. Treasury Bill rate from FRED, used in PM cash return and shorting-cost proxy."
+  master_trading_calendar:
+    type: "pd.DatetimeIndex"
+    description: "Canonical daily trading calendar over the study sample; exact holiday calendar source is unspecified in the manuscript."
+  asset_identifier_map:
+    type: "pd.DataFrame"
+    columns: 
+      - "asset_id"
+      - "ticker"
+      - "vendor_id"
+    description: "Permanent identifier map linking internal asset IDs to ticker and vendor-native identifiers; exact vendor identifier choice is unspecified in the manuscript."
+
+# -------------------------------------------------------------------------------------------------------------------------------
+# GLOBAL SYSTEM AND FIRM-LEVEL CONSTANTS [Source: Section 2, Section 4]
+# -------------------------------------------------------------------------------------------------------------------------------
+GLOBAL_FIRM_CONSTANTS:
+  M_portfolio_managers: 4
+  N_assets: 434
+  sample_start_date: "first_trading_day_in_July_2000"  # Unspecified in manuscript; rational placeholder until exact repository date is confirmed
+  sample_end_date: "last_trading_day_in_April_2025"  # Unspecified in manuscript; rational placeholder until exact repository date is confirmed
+  rebalance_frequency: "daily"  # Implied by the manuscript's daily market data and daily backtest
+  annualization_basis_trading_days: 252  # Unspecified in manuscript; standard institutional placeholder
+  gamma_tc: 0.15
+  gamma_risk: 20.0
+  gamma_turnover: 1.0
+  gamma_shorting: 1.0
+
+# -------------------------------------------------------------------------------------------------------------------------------
+# ASSET-UNIVERSE CONSTRUCTION [Source: Section 4.1]
+# -------------------------------------------------------------------------------------------------------------------------------
+ASSET_UNIVERSE_CONSTRUCTION:
+  candidate_set_logic: "historical_sp500_constituents_only"
+  requires_historical_membership_flag: true
+  sufficient_history_filter: "repository_defined_minimum_history_rule"  # Unspecified in manuscript; rational placeholder
+  market_cap_ranking_date: "last_available_trading_day_in_April_2025"  # Unspecified in manuscript; rational placeholder
+  market_cap_sort_direction: "descending"
+  final_universe_size: 434
+  bias_acknowledgment: "survivorship_bias_and_lookahead_bias_are_intentionally_accepted_for_relative_protocol_benchmarking"
+
+# -------------------------------------------------------------------------------------------------------------------------------
+# RANDOMNESS AND SEED REGISTRY
+# -------------------------------------------------------------------------------------------------------------------------------
+RANDOM_SEED_REGISTRY:
+  master_seed: 314159  # Unspecified in manuscript; rational placeholder for reproducibility
+  pm_nav_seed: 314160  # Unspecified in manuscript
+  pm_risk_target_seed: 314161  # Unspecified in manuscript
+  pm_universe_mask_seed: 314162  # Unspecified in manuscript
+  pm_ic_target_seed: 314163  # Unspecified in manuscript
+  pm_var_phi_seed: 314164  # Unspecified in manuscript
+  var_innovation_seed: 314165  # Unspecified in manuscript
+
+# -------------------------------------------------------------------------------------------------------------------------------
+# PORTFOLIO MANAGER (PM) CONFIGURATION [Source: Section 4.1, Table 1, Table 2]
+# -------------------------------------------------------------------------------------------------------------------------------
+PM_SLEEVE_CONFIGURATIONS:
+  manager_initialization_logic:
+    pm_ids: [1, 2, 3, 4]
+    initial_nav_usd_distribution: "log_uniform(10**6.5, 10**7.5)"
+    target_annual_vol_distribution: "uniform(0.06, 0.15)"
+    asset_universe_fraction_per_pm: 0.75
+    asset_universe_mask_static_over_time: true  # Unspecified in manuscript; rational placeholder because the paper says each PM is assigned a random subset
+    alpha_ic_target_distribution: "uniform(0.06, 0.10)"
+    temporal_autocorr_phi_distribution: "uniform(0.75, 0.85)"
+    current_weights_t0: "zero_vector_length_N"  # Unspecified in manuscript; rational placeholder if repository initialization is unavailable
+    current_cash_t0: 1.0  # Unspecified in manuscript; rational placeholder consistent with all-cash initialization
+    nav_weights_formula: "lambda_i = V_i / sum_j V_j"
+  pm_objective_problem: |
+    minimize   -alpha^T w - r_rf * c
+               + gamma_risk * s_risk
+               + gamma_turnover * s_turn
+               + gamma_tc * phi_tc(z)
+               + gamma_shorting * phi_short(w)
+    subject to w - w_curr = z
+               1 - 1^T w = c
+               ||w||_1 <= L
+               |w| <= C
+               1^T max(0, -w) <= S
+               ||w - w_curr||_2 + |c - c_curr| <= 2T + s_turn
+               ||Sigma^(1/2) w||_2 <= sigma_target + s_risk
+  pm_trade_variable_name_in_local_problem: "z"
+  pm_trade_variable_name_in_firm_problem: "x_i"
+
+# -------------------------------------------------------------------------------------------------------------------------------
+# INSTITUTIONAL CONSTRAINTS AND POLICY PARAMETERS [Source: Table 1]
+# -------------------------------------------------------------------------------------------------------------------------------
+INSTITUTIONAL_CONSTRAINTS:
+  leverage_limit_L: 1.5
+  concentration_limit_C: 0.2
+  shorting_limit_S: 0.5
+  turnover_limit_T: 0.2
+  turnover_constraint_formula: "||w - w_curr||_2 + |c - c_curr| <= 2T + s_turn"
+  risk_constraint_formula: "||Sigma^(1/2) w||_2 <= sigma_target + s_risk"
+  cash_identity_formula: "1 - 1^T w = c"
+  trade_identity_formula: "w - w_curr = z"
+
+# -------------------------------------------------------------------------------------------------------------------------------
+# TRANSACTION COST MODEL PARAMETERS [Source: Equation (3/2-power model), Section 2.1, Section 4.1]
+# -------------------------------------------------------------------------------------------------------------------------------
+TC_MODEL_PARAMETERS:
+  reference_mid_price_formula: "(adjusted_bid_price + adjusted_ask_price) / 2"
+  spread_fraction_formula: "(adjusted_ask_price - adjusted_bid_price) / reference_mid_price"  # Exact denominator convention is not printed explicitly in the manuscript
+  dollar_volume_formula: "adjusted_trade_price * share_volume"  # Exact price field used in this multiplication is unspecified in the manuscript
+  impact_coefficient_b: 1.0
+  impact_exponent: 1.5
+  kappa_impact_formula: "kappa_impact_j = (b_j * nu_j) / sqrt(omega_j / V_firm)"
+  volatility_source_for_kappa_impact: "nu_j = sqrt(diag(Sigma_t))_j"
+  phi_tc_formula: "phi_tc(z) = 0.5 * kappa_spread^T |z| + kappa_impact^T |z|^(3/2)"
+  shorting_cost_formula: "phi_short(w) = r_rf * sum_j max(0, -w_j)"
+  shorting_cost_argument: "w"  # The manuscript contains a notation inconsistency; position-based shorting cost is the economically correct interpretation
+  borrow_cost_proxy: "risk_free_rate_series"
+  aggregate_trade_constraint_set_Z: null  # The backtest does not print an additional explicit firmwide trade-feasibility set; placeholder retained for completeness
+  net_trade_formula: "z_firm = sum_i lambda_i * x_i"
+
+# -------------------------------------------------------------------------------------------------------------------------------
+# ADMM COORDINATION AND PROTOCOL HYPERPARAMETERS [Source: Section 2.2, Algorithm 1, Section 2.4]
+# -------------------------------------------------------------------------------------------------------------------------------
+ADMM_HYPERPARAMETERS:
+  rho_penalty: 10.0
+  varphi_dual_extrapolation: 1.0
+  iteration_counts_compared: [2, 5]
+  scaling_matrix_D_logic: "D_jj = sqrt(2 * kappa_impact_j)"
+  dual_init_u: "zero_vector_length_N"
+  z_sum_init_logic: "initial_NAV_weighted_net_trade"  # Unspecified in manuscript; rational placeholder
+  pm_init_logic: "x_i_0 = argmin_x f_i(x)"
+  sharing_signal_formula: "ell_k = u_k + (rho / M) * (-D z_sum_k + D sum_i lambda_i x_i_k)"
+  pm_update_formula: "x_i_{k+1} = argmin_x [lambda_i f_i(x) + lambda_i ell_k^T D x + (rho/2) ||lambda_i D (x - x_i_k)||_2^2]"
+  planner_update_formula: "z_sum_{k+1} = argmin_z [g(z) - u_k^T D z + (rho/(2M)) ||D z - sum_i lambda_i D x_i_{k+1}||_2^2]"
+  dual_update_formula: "u_{k+1} = u_k + (varphi * rho / M) * (D sum_i lambda_i x_i_{k+1} - D z_sum_{k+1})"
+
+# -------------------------------------------------------------------------------------------------------------------------------
+# SYNTHETIC ALPHA GENERATION AND NOISE PROCESS [Source: Section 4.1, Table 2]
+# -------------------------------------------------------------------------------------------------------------------------------
+SIMULATION_ECONOMETRICS:
+  forward_return_window_days: 42
+  alpha_signal_formula: "R_hat_t_i = c_i * (R_t + E_t_i)"
+  alpha_scaling_formula: "c_i = (IC_i)^2"
+  noise_scaling_formula: "v_i = sqrt(1 / (IC_i^2) - 1)"
+  target_ic_distribution: "uniform(0.06, 0.10)"
+  temporal_autocorr_distribution: "uniform(0.75, 0.85)"
+  cross_strategy_noise_correlation: 0.3
+  alpha_noise_process: "VAR(1)"
+  var_formula: "E_t = Phi E_{t-1} + U_t"
+  stationary_covariance_formula: "Sigma_E = S_E kron Sigma_Asset"
+  lyapunov_equation: "Sigma_E = Phi Sigma_E Phi^T + Sigma_U"
+  innovation_sampling_distribution: "multivariate_normal(mean=0, cov=Sigma_U)"  # Unspecified in manuscript; rational placeholder implied by covariance-based VAR simulation
+  alpha_uses_true_forward_returns: true
+
+# -------------------------------------------------------------------------------------------------------------------------------
+# COMMON RISK MODEL SPECIFICATION [Source: Section 4.1]
+# -------------------------------------------------------------------------------------------------------------------------------
+RISK_MODEL_SPECIFICATION:
+  risk_model_type: "low_rank_factor_covariance"
+  J_factors: 15
+  forward_window_days: 42
+  volatility_estimation_method: "sample_standard_deviation_over_forward_window"
+  standardization_logic: "divide_asset_returns_by_asset_volatility"
+  winsorization_std: 4.2
+  correlation_matrix_source: "winsorized_standardized_forward_returns"
+  eigendecomposition_logic: "top_J_eigenpairs_of_sample_correlation_matrix"
+  factor_loading_formula: "F_t = diag(sigma_t) Q_t Lambda_t^(1/2)"
+  covariance_formula: "Sigma_t = F_t F_t^T + D_t"
+  idiosyncratic_variance_logic: "diagonal_residual_variance_not_explained_by_factors"  # Exact residual formula is unspecified in manuscript
+  covariance_annualization_logic: "repository_defined_or_252_based_scaling"  # Unspecified in manuscript; rational placeholder
+
+# -------------------------------------------------------------------------------------------------------------------------------
+# DERIVED DATA OBJECTS THAT MUST BE CONSTRUCTED FROM RAW INPUTS
+# -------------------------------------------------------------------------------------------------------------------------------
+DERIVED_DATA_OBJECTS:
+  reference_mid_price: "(adjusted_bid_price + adjusted_ask_price) / 2"
+  kappa_spread: "fractional_bid_ask_spread"
+  daily_dollar_volume: "adjusted_trade_price * share_volume"
+  forward_realized_return_vector_R_t: "42_day_forward_realized_return_vector_per_date"
+  Sigma_t: "common_factor_covariance_matrix"
+  nu_t: "sqrt(diag(Sigma_t))"
+  kappa_impact_t: "impact_vector_from_nu_and_dollar_volume"
+  D_t: "diag(sqrt(2 * kappa_impact_t))"
+  pm_alpha_vectors: "synthetic_alpha_vectors_per_PM_per_date"
+  pm_nav_weights: "lambda_i_t = V_i_t / sum_j V_j_t"
+
+# -------------------------------------------------------------------------------------------------------------------------------
+# RAW DATA STRUCTURE SCHEMAS (TRULY RAW OR VENDOR-NATIVE INPUTS)
+# -------------------------------------------------------------------------------------------------------------------------------
+RAW_DATA_SCHEMA:
+  market_panel:
+    index: 
+      - "date (DateTime)"
+      - "asset_id (Permanent String/Integer Identifier)"
+    ticker: "string: Human-readable symbol; metadata only, not the permanent key"
+    adjusted_trade_price: "float64: Split/dividend adjusted daily trade price"
+    adjusted_bid_price: "float64: Split/dividend adjusted daily bid price"
+    adjusted_ask_price: "float64: Split/dividend adjusted daily ask price"
+    share_volume: "int64: Daily share volume"
+    market_cap_usd: "float64: Daily market capitalization used for universe ranking"
+    is_historical_sp500_constituent: "bool: Historical index membership flag"
+    is_primary_observation: "bool: Duplicate-resolution guardrail"  # Unspecified in manuscript
+    currency: "string: Expected to be USD throughout"  # Unspecified in manuscript
+    data_quality_flag: "string/categorical: Vendor or internal quality-control label"  # Unspecified in manuscript
+  risk_free_rate_series:
+    index: 
+      - "date (DateTime)"
+    risk_free_rate: "float64: 3-month U.S. Treasury Bill rate from FRED"
+  master_trading_calendar:
+    type: "pd.DatetimeIndex"
+    description: "All valid rebalance dates used by the walk-forward simulation"
+  asset_identifier_map:
+    columns: 
+      - "asset_id"
+      - "ticker"
+      - "vendor_id"
+    description: "Permanent identifier map linking internal asset IDs to ticker and vendor-native identifiers"
+
+# -------------------------------------------------------------------------------------------------------------------------------
+# BACKTEST PROTOCOL REGISTRY AND NETWORK ARCHITECTURES
+# -------------------------------------------------------------------------------------------------------------------------------
+PROTOCOL_REGISTRY:
+  independent:
+    architecture: "disconnected_PM_nodes_with_only_post_decision_netting"
+    coordination_rounds_K: 0
+    description: "Each PM solves its own local optimization independently."
+  full_cooperative:
+    architecture: "fully_centralized_joint_solver"
+    coordination_rounds_K: null
+    description: "All PM objectives are gathered and solved as a single cooperative convex program."
+  admm_2_iter:
+    architecture: "hub_and_spoke_planner_PM_network"
+    coordination_rounds_K: 2
+    description: "Distributed ADMM protocol with K = 2."
+  admm_5_iter:
+    architecture: "hub_and_spoke_planner_PM_network"
+    coordination_rounds_K: 5
+    description: "Distributed ADMM protocol with K = 5."
+
+# -------------------------------------------------------------------------------------------------------------------------------
+# STATE TRANSITION, ACCOUNTING, AND WALK-FORWARD BACKTEST LOGIC
+# -------------------------------------------------------------------------------------------------------------------------------
+BACKTEST_STATE_LOGIC:
+  walk_forward_simulation: true
+  weights_update_logic: "repository_defined_post_trade_and_post_return_update"  # Unspecified in manuscript; rational placeholder
+  cash_update_logic: "repository_defined_cash_roll_forward"  # Unspecified in manuscript; rational placeholder
+  nav_update_logic: "repository_defined_NAV_roll_forward"  # Unspecified in manuscript; rational placeholder
+  nav_weight_recompute_each_period: true
+  valid_decision_dates_logic: "dates_in_master_trading_calendar_with_full_42_day_forward_window_available"
+  edge_date_trimming_logic: "drop_terminal_dates_without_complete_forward_window"  # Implied but not fully specified in manuscript
+  rf_daily_conversion_logic: "daily_rf = annualized_3m_tbill_yield / 252"  # Unspecified in manuscript; standard placeholder
+
+# -------------------------------------------------------------------------------------------------------------------------------
+# SOLVER AND NUMERICAL SETTINGS
+# -------------------------------------------------------------------------------------------------------------------------------
+SOLVER_AND_NUMERICAL_SETTINGS:
+  modeling_layer: "CVXPY"
+  solver_name: "MOSEK"  # Unspecified in manuscript; rational placeholder given CVXGrp practice and large convex portfolio problems
+  solver_warm_start: true  # Unspecified in manuscript; rational placeholder
+  solver_feasibility_tolerance: 1.0e-08  # Unspecified in manuscript; rational placeholder
+  solver_optimality_tolerance: 1.0e-08  # Unspecified in manuscript; rational placeholder
+  max_solver_iterations: 100000  # Unspecified in manuscript; rational placeholder
+  failure_policy: "raise_and_log_full_state_for_reproducibility"  # Unspecified in manuscript
+  float_dtype: "float64"
+
+# -------------------------------------------------------------------------------------------------------------------------------
+# METHODOLOGICAL AND PRE-PROCESSING NOTES
+# -------------------------------------------------------------------------------------------------------------------------------
+METHODOLOGY:
+  missing_bid_ask_strategy: "forward_fill"
+  missing_trade_price_strategy: "drop_or_repository_defined_cleaning_rule"  # Unspecified in manuscript; rational placeholder
+  missing_volume_strategy: "drop_or_repository_defined_cleaning_rule"  # Unspecified in manuscript; rational placeholder
+  corporate_action_adjustment_required: true
+  lookahead_risk_model: true
+  lookahead_alpha_generation: true
+  solver_requirement: "convex_optimization_solver_required_for_PM_and_joint_problems"
+  privacy_firewall: "PMs_do_not_share_private_objectives_or_constraints_with_other_PMs; distributed_coordination_occurs_only_through_planner_signals"
+  paper_repository: "https://github.com/cvxgrp/coop_t_code"
+
+# -------------------------------------------------------------------------------------------------------------------------------
+# OUTPUTS, EVALUATION, AND REPORTING
+# -------------------------------------------------------------------------------------------------------------------------------
+VISUALIZATION_PARAMETERS:
+  plot_metrics: 
+    - "firm_cumulative_return_index"
+    - "firm_cumulative_transaction_cost"
+    - "pm_cumulative_return_index"
+    - "pm_cumulative_transaction_cost"
+  comparison_groups: 
+    - "independent"
+    - "full_cooperative"
+    - "admm_2_iter"
+    - "admm_5_iter"
+  table_stats: 
+    - "annualized_return"
+    - "annualized_volatility"
+    - "sharpe_ratio"
+  performance_annualization_basis: 252  # Unspecified in manuscript; standard placeholder
+
+# -------------------------------------------------------------------------------------------------------------------------------
+# LLM / PROMPT LAYER
+# -------------------------------------------------------------------------------------------------------------------------------
+PROMPT_TEMPLATES: null  # No LLM, prompt template, or prompt setting is used anywhere in the study
+LLM_SETTINGS: null  # Explicitly absent from the study
