@@ -24,7 +24,7 @@
 [![Jupyter](https://img.shields.io/badge/Jupyter-%23F37626.svg?style=flat&logo=Jupyter&logoColor=white)](https://jupyter.org/)
 [![Open Source](https://img.shields.io/badge/Open%20Source-%E2%9D%A4-brightgreen)](https://github.com/cooperative_transaction_cost_mitigation)
 
-**Repository:** `https://github.com//chirindaopensource/cooperative_transaction_cost_mitigation`
+**Repository:** `https://github.com/chirindaopensource/cooperative_transaction_cost_mitigation`
 
 **Owner:** 2026 Craig Chirinda (Open Source Projects)
 
@@ -139,7 +139,7 @@ The project is designed around a single, top-level user-facing interface functio
 
 1.  **Clone the repository:**
     ```sh
-    git clone https://github.com//chirindaopensource/cooperative_transaction_cost_mitigation.git
+    git clone https://github.com/chirindaopensource/cooperative_transaction_cost_mitigation.git
     cd cooperative_transaction_cost_mitigation
     ```
 
@@ -271,7 +271,7 @@ If you use this code or the methodology in your research, please cite the origin
 For the implementation itself, you may cite this repository:
 ```
 Chirinda, C. (2026). A Distributed Method for Cooperative Transaction Cost Mitigation: An Open Source Implementation.
-GitHub repository: https://github.com//chirindaopensource/cooperative_transaction_cost_mitigation
+GitHub repository: https://github.com/chirindaopensource/cooperative_transaction_cost_mitigation
 ```
 
 ## Acknowledgments
